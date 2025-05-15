@@ -143,8 +143,7 @@ def main():
             '--seed', str(args.seed),
             '--save_process', '' if args.save_process else '--no-save_process',
             '--process_steps', str(args.process_steps),
-            '--save_npy', '' if args.save_npy else '--no-save_npy',
-            '--data_path', args.data_path,
+            '--save_npy', '' if args.save_npy else '--no-save_npy'
         ])
         generate_module.generate_samples(generate_args)
 

@@ -108,7 +108,8 @@ def get_dataloader(data_path, batch_size=64, segment_length=1000,
     # 划分数据集
     train_dataset, val_dataset = torch.utils.data.random_split(
         dataset, [train_size, val_size])
-      # 创建数据加载器
+    
+    # 创建数据加载器
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -125,7 +126,7 @@ def get_dataloader(data_path, batch_size=64, segment_length=1000,
         pin_memory=pin_memory
     )
     
-    return train_loader, val_loader, dataset
+    return train_loader, val_loader
 
 
 if __name__ == "__main__":
