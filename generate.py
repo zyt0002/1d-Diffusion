@@ -29,6 +29,10 @@ def parse_args():
                         help='是否保存整个生成过程')
     parser.add_argument('--process_steps', type=int, default=1000,
                         help='要保存的扩散过程步数')
+    parser.add_argument('--data_path', type=str, default='data/ecg_all.npy',
+                        help='原始数据路径(用于反归一化)')
+    parser.add_argument('--no_denormalize', action='store_true',
+                        help='不进行反归一化处理')
     
     return parser.parse_args()
 
@@ -118,7 +122,8 @@ def generate_samples(args):
                 if time_step % (num_timesteps // args.process_steps) == 0 or time_step == 0:
                     intermediates.append(x_t.clone())
             
-            return torch.clip(x_t, -1, 1), intermediates
+            # 最后阶段不再对结果进行裁剪，由于模型学习到的数据范围通常在[-1,1]，但允许超出
+            return x_t, intermediates
         
         # 保存原始forward方法
         original_forward = sampler.forward
@@ -146,17 +151,68 @@ def generate_samples(args):
             print(f"样本 {i+1} 的生成过程保存至: {process_path}")
             
     else:
+        # 修改采样器的forward方法，避免裁剪
+        def generate_without_clip(self, x_T):
+            x_t = x_T
+            for time_step in tqdm(reversed(range(self.T)), desc="生成样本"):
+                t = x_t.new_ones([x_T.shape[0], ], dtype=torch.long) * time_step
+                mean, log_var = self.p_mean_variance(x_t=x_t, t=t)
+                
+                # 在t=0时没有噪声
+                if time_step > 0:
+                    noise = torch.randn_like(x_t)
+                else:
+                    noise = 0
+                    
+                x_t = mean + torch.exp(0.5 * log_var) * noise
+                
+            # 不裁剪结果
+            return x_t
+
+        # 保存原始forward方法
+        original_forward = sampler.forward
+        
+        # 替换forward方法
+        import types
+        sampler.forward = types.MethodType(generate_without_clip, sampler)
+        
         # 直接生成样本
         print(f"生成 {args.num_samples} 个样本...")
         with torch.no_grad():
             samples = sampler(z)
+        
+        # 恢复原始forward方法
+        sampler.forward = original_forward
     
     # 将样本移动到CPU并转换为NumPy数组
     samples_np = samples.cpu().numpy()
     
+    # 进行反归一化处理（如果需要）
+    if not args.no_denormalize:
+        try:
+            # 加载原始数据集以获取归一化参数
+            print("加载原始数据以进行反归一化处理...")
+            dataset = ECGDataset(args.data_path, segment_length)
+            
+            # 转换回tensor再进行反归一化
+            samples_tensor = torch.from_numpy(samples_np)
+            denormalized_samples = dataset.denormalize(samples_tensor)
+            samples_np = denormalized_samples.numpy()
+            samples = denormalized_samples.to(device)
+            print(f"反归一化完成。样本范围: [{samples_np.min():.4f}, {samples_np.max():.4f}]")
+        except Exception as e:
+            print(f"反归一化处理失败: {e}")
+            print("将使用原始生成的样本。")
+    
     # 绘制生成的样本
     samples_path = os.path.join(args.save_dir, "generated_samples.png")
-    plot_ecg_samples(samples, save_path=samples_path, show=False)
+    
+    # 调整ylim以适应数据范围
+    y_min = min(-1.5, samples_np.min() * 1.2)
+    y_max = max(1.5, samples_np.max() * 1.2)
+    
+    # 绘制样本，使用动态范围
+    plot_ecg_samples(samples, save_path=samples_path, show=False, y_range=(y_min, y_max))
     print(f"生成的样本保存至: {samples_path}")
     
     # 如果需要保存为NPY文件

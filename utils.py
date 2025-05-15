@@ -126,7 +126,7 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def plot_ecg_samples(samples, save_path=None, show=True, titles=None):
+def plot_ecg_samples(samples, save_path=None, show=True, titles=None, y_range=None):
     """
     绘制心电图样本
     
@@ -135,6 +135,7 @@ def plot_ecg_samples(samples, save_path=None, show=True, titles=None):
         save_path: 保存路径 (可选)
         show: 是否显示图形
         titles: 子图标题列表 (可选)
+        y_range: y轴显示范围，格式为(ymin, ymax) (可选)
     """
     batch_size = samples.shape[0]
     
@@ -149,7 +150,11 @@ def plot_ecg_samples(samples, save_path=None, show=True, titles=None):
         else:
             plt.title(f"ECG Sample {i+1}")
             
-        plt.ylim(-1.2, 1.2)
+        # 使用提供的y轴范围或默认值
+        if y_range is not None:
+            plt.ylim(y_range[0], y_range[1])
+        else:
+            plt.ylim(-1.2, 1.2)
         plt.grid(True, linestyle='--', alpha=0.5)
     
     plt.tight_layout()
